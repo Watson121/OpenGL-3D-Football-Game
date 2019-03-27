@@ -1,0 +1,1694 @@
+//Windows includes - DO NOT EDIT AS LOTS OF INTERDEPENDENCE
+#include <math.h>						
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <iostream>	//Needed for console output (debugging)
+#include <gl/freeglut.h>
+#include <iostream>
+#include <vector>
+
+#ifdef WIN32
+#include "gltools.h"
+#include <windows.h>		// Must have for Windows platform builds
+#include <gl\gl.h>			// Microsoft OpenGL headers (version 1.1 by themselves)
+#include <gl\glu.h>			// OpenGL Utilities
+#include "glm.h"
+#endif
+
+//note that this needs gltools.h and gltools.cpp to be included in the shared/library directory
+
+//can define any number of textures here - we just have 2 images
+//these are just integers so you can use them as such
+#define GRASS      0	//Grass Texture
+#define WALL      1		//Wall Texture
+#define FOOTBALL 2    //football map
+#define TREE 3
+#define FLOWER_ORANGE 4
+#define FLOWER_YELLOW 5
+#define TARGET_RED 6
+#define TARGET_GREEN 7
+#define TARGET_BLUE 8
+#define TARGET_DULL 9
+#define BACKGROUND 10
+#define RED_DOT 11
+#define XBAR 12
+#define YBAR 13
+#define XBARSLIDER 14
+#define YBARSLIDER 15
+#define TEXTURE_COUNT 16
+GLuint  textures[TEXTURE_COUNT];
+
+//below is simply a character array to hold the file names
+//note that you may need to replace the below with the full directory root depending on where you put your image files
+//if you put them where the exe is then you just need the name as below - THESE IMAGES  ARE IN THE DEBUG FOLDER, YOU CAN ADD ANY NEW ONES THERE 
+const char *textureFiles[TEXTURE_COUNT] = {"grass_diff(1).tga", "old_wall_texture_TGA.tga", "FootballCompleteMap.tga",  "palmBranchA.tga", "orangeFlowerFinal5.tga", 
+"yellowFlowerFinal.tga", "targetRed.tga", "targetGreen.tga", "targetBlue.tga", "targetDull.tga", "stormydays_large.tga", "RedDot.tga", "fillBarHorizontal.tga", 
+"fillBarVerticalR.tga", "xBarSlider.tga", "yBarSlider.tga"};
+
+
+//for lighting if you want to experiment with these
+GLfloat mKa[4] = {0.11f,0.06f,0.11f,1.0f}; //ambient
+GLfloat mKd[4] = {0.43f,0.47f,0.54f,1.0f}; //diffuse
+GLfloat mKs[4] = {1.0f,1.0f,1.0f,1.0f}; //specular
+GLfloat mKe[4] = {0.5f,0.5f,0.0f,1.0f}; //emission
+
+//spot position and direction
+GLfloat	 lightPos[] = { 0.0, 100.0, 300.0, 0.0f };
+GLfloat  spotDir[] = { 50.0, 25.0, 0.0 };
+
+GLfloat	 lightPos2[] = { 50.0, 100.0, 300.0, 0.0f };
+GLfloat  spotDir2[] = { 50.0, 15.0, 0.0 };
+
+GLfloat	 lightPos3[] = { -50.0, 100.0, 300.0, 0.0f };
+GLfloat  spotDir3[] = { 50.0, 15.0, 0.0 };
+
+
+// Useful lighting colour values
+GLfloat  whiteLightBright[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+GLfloat  redLight[] = { 1.0f, 0.0f, 0.0f, 1.0f };
+GLfloat  greenLight[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+GLfloat  blueLight[] = { 0.0f, 1.0f, 1.0f, 1.0f };
+GLfloat  whiteLightLessBright[] = { 0.8f, 0.8f, 0.8f, 1.0f };
+
+
+//we need these for the texture loader
+//they are to do with the image format and size
+GLint iWidth, iHeight, iComponents;
+GLenum eFormat;
+// this is a pointer to memory where the image bytes will be held 
+GLbyte *pBytes0;
+
+//camera
+GLfloat cameraX = 0.0;
+GLfloat cameraY = 100.0;
+GLfloat cameraZ = 550.0;
+
+bool moveCamera = false;
+bool moveBall = false;
+
+#pragma region DRAWING FUNCTIONS
+void buildTargetsAndBoundingSpheres();
+void buildScene();
+void buildDecerations();
+void buildRedDot();
+void buildFootball();
+void background();
+void UI();
+#pragma endregion
+
+#pragma region OTHER FUNCTIONS
+void resetPerspectiveProjection();
+void drawingScoreText(GLfloat scale);
+void setOrthographicProjection();
+void ChangeSize(int w, int h);
+void RenderScene(void);
+void TimerFunc(int value);
+void distanceBetweenTargets();
+void resetRedPosition();
+#pragma endregion
+
+GLint Wwidth;
+GLint Wheight;
+GLint numberOfGoes = 10;
+GLfloat Score = 0.0;
+
+//Bar Position
+GLfloat xBarSlider = -165.0f;
+GLfloat yBarSlider = -71.15;
+
+//Ball Position
+GLfloat xStart = 0.0f;
+GLfloat yStart = 20.0f;
+GLfloat zStart = 280.0f;
+
+//Destination
+GLfloat xBall = 0.0f;
+GLfloat yBall = 250.0f;
+GLfloat zBall = -398.0f;
+
+//Speeds
+GLfloat xSpeed = 3;
+GLfloat ySpeed = 3;
+
+GLfloat travelToX;
+GLfloat travelToY;
+GLfloat travelToZ;
+GLfloat backgroundRotation = 0.0f;
+GLfloat ballRotation = 0.0f;
+
+bool target1 = false;
+bool target2 = false;
+bool target3 = false;
+bool target4 = false;
+bool target5 = false;
+bool target6 = false;
+bool target7 = false;
+bool target8 = false;
+bool target9 = false;
+bool cameraFollow = false;
+
+
+using namespace std;
+
+//void userControls(int key, int x, int y);
+
+//end of intialisation 
+
+#pragma region CLASSES
+//Class for the Grass
+class Grass {
+
+public:
+	Grass(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glColor3f(1.0, 1.0, 1.0);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 1.0f, 0.0f);
+		glTexCoord2f(-4.0, -4.0);
+		glVertex3f(-1000, -1000, 0.0);
+		glTexCoord2f(4.0, -4.0);
+		glVertex3f(1000, -1000, 0.0);
+		glTexCoord2f(4.0, 4.0);
+		glVertex3f(1000, 1000, 0.0);
+		glTexCoord2f(-4.0, 4.0);
+		glVertex3f(-1000, 1000, 0.0);
+		glEnd();
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for Walls
+class Wall {
+public:
+	Wall(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glColor3f(1.0, 1.0, 1.0);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 1.0f, 0.0f);
+		glTexCoord2f(-4.0, -4.0);
+		glVertex3f(-1000, -1000, 0.0);
+		glTexCoord2f(4.0, -4.0);
+		glVertex3f(1000, -1000, 0.0);
+		glTexCoord2f(4.0, 4.0);
+		glVertex3f(1000, 1000, 0.0);
+		glTexCoord2f(-4.0, 4.0);
+		glVertex3f(-1000, 1000, 0.0);
+		glEnd();
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for the football
+class Football {
+private:
+	GLfloat X;
+	GLfloat Y;
+	GLfloat Z;
+	GLfloat Radius;
+	GLUquadricObj * quadricFootball;
+
+public:
+	Football(GLfloat x, GLfloat y, GLfloat z, GLfloat r) {
+		X = x;
+		Y = y;
+		Z = z;
+		Radius = r;
+
+		glPushMatrix();
+		glFrontFace(GL_CCW);
+		glTranslatef(X, Y, Z);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[FOOTBALL]);
+		glColor3f(0.5, 0.5, 0.5);
+		quadricFootball = gluNewQuadric();
+		gluQuadricDrawStyle(quadricFootball, GLU_FILL);
+		gluQuadricNormals(quadricFootball, GLU_SMOOTH);
+		gluQuadricOrientation(quadricFootball, GLU_OUTSIDE);
+		gluQuadricTexture(quadricFootball, GL_TRUE);
+		gluSphere(quadricFootball, Radius, 60, 35);
+		glDisable(GL_TEXTURE_2D);
+		glPopMatrix();
+	}
+
+	GLfloat getX() {
+		return X;
+	}
+
+	GLfloat getY() {
+		return Y;
+	}
+
+	GLfloat getZ() {
+		return Z;
+	}
+
+	GLfloat getRadius() {
+		return Radius;
+	}
+};
+//Class for the flowers
+class Flowers {
+private:
+public:
+	Flowers(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.5, 0.5, 0.5, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-20, 0.0, 100.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(20, 0.0, 100.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(20, 50.0, 100.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-20, 50.0, 100.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for the Trees
+class Tree {
+private:
+public:
+	Tree(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-50.0, 0.0, 100.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(50.0, 0.0, 100.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(50.0, 250.0, 100.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-50.0, 250.0, 100.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for the targets
+class Targets {
+private:
+	bool hit;
+public:
+	Targets(int image, float width, float height, bool h) {
+		hit = h;
+
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glColor3f(1.0, 1.0, 1.0);
+		glEnable(GL_TEXTURE_2D);
+		if (hit == false) {
+			glBindTexture(GL_TEXTURE_2D, textures[image]);
+		}
+		else if (hit == true) {
+			glBindTexture(GL_TEXTURE_2D, textures[TARGET_DULL]);
+		}
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 1.0f, 0.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-width, -height, 0.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(width, -height, 0.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(width, height, 0.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-width, height, 0.0);
+		glEnd();
+		glDisable(GL_TEXTURE_2D);
+	}
+
+	bool getHit() {
+		return hit;
+	}
+
+	void setHit() {
+		hit = true;
+	}
+
+};
+//Class for the Bounding Sphere
+class BoundingSphere {
+private:
+
+	GLfloat X;
+	GLfloat Y;
+	GLfloat Z;
+	GLfloat Radius;
+	GLUquadricObj *quadricSphere;
+	bool hit = false;
+
+public:
+	BoundingSphere(GLfloat x, GLfloat y, GLfloat z, GLfloat r) {
+		X = x;
+		Y = y;
+		Z = z;
+		Radius = r;
+
+		glPushMatrix();
+		glFrontFace(GL_CCW);
+		glTranslatef(X, Y, Z);
+		glEnable(GL_TEXTURE_2D);
+		//glBindTexture(GL_TEXTURE_2D, textures[FOOTBALL]);
+		glColor3f(0.5, 0.5, 0.5);
+		quadricSphere = gluNewQuadric();
+		gluQuadricDrawStyle(quadricSphere, GLU_FILL);
+		gluQuadricNormals(quadricSphere, GLU_SMOOTH);
+		gluQuadricOrientation(quadricSphere, GLU_OUTSIDE);
+		//gluQuadricTexture(quadricSphere, GL_TRUE);
+		gluSphere(quadricSphere, Radius, 60, 35);
+		glDisable(GL_TEXTURE_2D);
+		glPopMatrix();
+	}
+
+	GLfloat getX() {
+		return X;
+	}
+
+	GLfloat getY() {
+		return Y;
+	}
+
+	GLfloat getZ() {
+		return Z;
+	}
+
+	GLfloat getRadius() {
+		return Radius;
+	}
+
+	bool getHit() {
+		return hit;
+	}
+
+	void setTrue() {
+		hit = true;
+	}
+
+
+};
+//Class for background
+class Background {
+private:
+public:
+	Background(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glColor3f(0.8f, 0.8f, 0.8f);
+		glEnable(GL_TEXTURE_2D);
+
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+
+		glFrontFace(GL_CW);
+
+		glNormal3f(0.0f, 0.0f, 1.0f);
+
+		//SIDE 1
+		glTexCoord2f(0.0f, 0.3f);
+		glVertex3f(-1.0f, -1.0f, 1.0f);
+
+		glTexCoord2f(0.6f, 0.3f);
+		glVertex3f(1.0f, -1.0f, 1.0f);
+
+		glTexCoord2f(0.6f, 0.6f);
+		glVertex3f(1.0f, -1.0f, -1.0f);
+
+		glTexCoord2f(0.3f, 0.6f);
+		glVertex3f(-1.0f, -1.0f, -1.0f);
+
+		//SIDE 2
+		glTexCoord2f(0.0f, 0.3f);
+		glVertex3f(-1.0f, 1.0f, -1.0f);
+
+		glTexCoord2f(0.6f, 0.3f);
+		glVertex3f(1.0f, 1.0f, -1.0f);
+
+		glTexCoord2f(0.6f, 0.6f);
+		glVertex3f(1.0f, 1.0f, 1.0f);
+
+		glTexCoord2f(0.3f, 0.6f);
+		glVertex3f(-1.0f, 1.0f, 1.0f);
+
+		//SIDE 3
+
+		glTexCoord2f(0.0f, 0.3f);
+		glVertex3f(-1.0f, -1.0f, -1.0f);
+
+		glTexCoord2f(0.25f, 0.3f);
+		glVertex3f(1.0f, -1.0f, -1.0f);
+
+		glTexCoord2f(0.25f, 0.6f);
+		glVertex3f(1.0f, 1.0f, -1.0f);
+
+		glTexCoord2f(0.0f, 0.6f);
+		glVertex3f(-1.0f, 1.0f, -1.0f);
+
+		//SIDE 4
+
+		glTexCoord2f(0.75f, 0.6f);
+		glVertex3f(-1.0f, 1.0f, 1.0f);
+
+		glTexCoord2f(0.5f, 0.6f);
+		glVertex3f(1.0f, 1.0f, 1.0f);
+
+		glTexCoord2f(0.5f, 0.3f);
+		glVertex3f(1.0f, -1.0f, 1.0f);
+
+		glTexCoord2f(0.75f, 0.3f);
+		glVertex3f(-1.0f, -1.0f, 1.0f);
+
+		//SIDE 5
+
+		glTexCoord2f(0.25f, 0.3f);
+		glVertex3f(1.0f, -1.0f, -1.0f);
+
+		glTexCoord2f(0.5f, 0.3f);
+		glVertex3f(1.0f, -1.0f, 1.0f);
+
+		glTexCoord2f(0.5f, 0.6f);
+		glVertex3f(1.0f, 1.0f, 1.0f);
+
+		glTexCoord2f(0.25f, 0.6f);
+		glVertex3f(1.0f, 1.0f, -1.0f);
+
+		//SIDE 6
+
+		glTexCoord2f(0.75f, 0.3f);
+		glVertex3f(-1.0f, -1.0f, 1.0f);
+
+		glTexCoord2f(1.0f, 0.3f);
+		glVertex3f(-1.0f, -1.0f, -1.0f);
+
+		glTexCoord2f(1.0f, 0.6f);
+		glVertex3f(-1.0f, 1.0f, -1.0f);
+
+		glTexCoord2f(0.75f, 0.6f);
+		glVertex3f(-1.0f, 1.0f, 1.0f);
+
+		glFrontFace(GL_CW);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for BarX
+class BarX {
+private:
+public:
+	BarX(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-20.0, 0.0, 5.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(20.0, 0.0, 5.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(20.0, 10.0, 5.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-20.0, 10.0, 5.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for BarXSlider
+class BarXSlider {
+private:
+public:
+	BarXSlider(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-1, 0.0, 5.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(1, 0.0, 5.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(1, 14.0, 5.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-1, 14.0, 5.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for BarY
+class BarY {
+private:
+public:
+	BarY(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-7, 0.0, 5.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(7, 0.0, 5.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(7, 40.0, 5.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-7.0, 40.0, 5.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+};
+//Class for BarYSlider
+class BarYSlider {
+private:
+public:
+	BarYSlider(int image) {
+		glEnable(GL_TEXTURE_2D);
+		glEnable(GL_BLEND);
+		glColor4f(0.8, 0.8, 0.8, 1);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+		glDisable(GL_CULL_FACE);
+		glEnable(GL_TEXTURE_2D);
+		glBindTexture(GL_TEXTURE_2D, textures[image]);
+		glBegin(GL_QUADS);
+		glNormal3f(0.0f, 0.0f, 1.0f);
+		glTexCoord2f(0.0, 0.0);
+		glVertex3f(-9, 0.0, 5.0);
+		glTexCoord3f(1.0, 0.0, 0.0);
+		glVertex3f(9, 0.0, 5.0);
+		glTexCoord2f(1.0, 1.0);
+		glVertex3f(9, 2, 5.0);
+		glTexCoord2f(0.0, 1.0);
+		glVertex3f(-9, 2, 5.0);
+		glEnd();
+		glDisable(GL_BLEND);
+		glDisable(GL_TEXTURE_2D);
+	}
+
+};
+#pragma endregion
+
+Football *football;	//Football Object
+#pragma region VECTOR ARRAYS
+std::vector < Wall > walls;	//ARRAY OF WALLS
+std::vector < BoundingSphere > boundingSpheres; //ARRAY OF BOUNDING SPHERES
+std::vector < Targets > targets;	//ARRAY OF TARGETS
+#pragma endregion
+
+
+
+
+void resetPerspectiveProjection() {
+	glMatrixMode(GL_PROJECTION);
+	glPopMatrix();
+	glMatrixMode(GL_MODELVIEW);
+}
+
+void drawRedDot(int image) {
+	glEnable(GL_TEXTURE_2D);
+	glColor3f(1.0, 1.0, 1.0);
+	glBindTexture(GL_TEXTURE_2D, textures[image]);
+	glBegin(GL_QUADS);
+	glNormal3f(0.0f, 1.0f, 0.0f);
+	glTexCoord2f(0.0, 0.0);
+	glVertex3f(-10, -10, 0.0);
+	glTexCoord2f(1.0, 0.0);
+	glVertex3f(10, -10, 0.0);
+	glTexCoord2f(1.0, 1.0);
+	glVertex3f(10, 10, 0.0);
+	glTexCoord2f(0.0, 1.0);
+	glVertex3f(-10, 10, 0.0);
+	glEnd();
+	glDisable(GL_TEXTURE_2D);
+}
+
+void drawBackgroundCube(GLfloat centrePosX, GLfloat centrePosY, GLfloat centrePosZ, GLfloat edgeLength) {
+	GLfloat halfSideLength = edgeLength * 0.5f;
+
+	GLfloat vertices[108] = 
+	{
+		//Front Face
+		100, -100, -100,
+		100, 100, -100,
+		100, -100, 100,
+		100, -100, 100,
+		100, 100, -100,
+		100, 100, 100,
+
+		//Back Face
+		100, 100, -100,
+		-100, 100, -100,
+		100, 100, 100,
+		100, 100, 100,
+		-100, 100, -100,
+		-100, 100, 100,
+
+		//Left Face
+		-100, 100, -100,
+		-100, -100, -100,
+		-100, 100, 100,
+		-100, 100, 100,
+		-100, -100, -100,
+		-100, -100, 100,
+
+		//Right Face
+		-100, -100, -100,
+		100, -100, -100,
+		-100, -100, 100,
+		-100, -100, 100,
+		100, -100, -100,
+		100, -100, 100,
+
+		//Top Face
+		100, 100, 100,
+		-100, 100, 100,
+		100, -100, 100,
+		100, -100, 100,
+		-100, 100, 100,
+		-100, -100, 100,
+	
+		//Bottom Face
+		100, -100, -100,
+		-100, -100, -100,
+		100, 100, -100,
+		100, 100, -100,
+		-100, -100, -100,
+		-100, 100, -100
+	};
+
+	GLfloat textureCoords[]{
+		//Front Face
+		75, 33,
+
+
+		//Back Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+
+		//Left Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+
+		//Right Face
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+
+		//Top Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+
+		//Bottom Face
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength
+	};
+
+	GLfloat lightVertexNormals[]{
+		//Front Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+
+		//Back Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+
+		//Left Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+
+		//Right Face
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+
+		//Top Face
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY + halfSideLength, centrePosZ + halfSideLength,
+
+		//Bottom Face
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength,
+		centrePosX - halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ - halfSideLength,
+		centrePosX + halfSideLength, centrePosY - halfSideLength, centrePosZ + halfSideLength
+	};
+
+	glEnableClientState(GL_NORMAL_ARRAY);
+	glNormalPointer(GL_FLOAT, 0, lightVertexNormals);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glTexCoordPointer(2, GL_FLOAT, 0, textureCoords);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glVertexPointer(3, GL_FLOAT, 0, vertices);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_NORMAL_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+}
+
+void drawText(const char *string, float x, float y, GLfloat r, GLfloat g, GLfloat b) {
+	GLint j = strlen(string);
+
+	/*This function draws text that displays on the canvas*/
+
+	glColor3f(r, g, b);
+
+	glRasterPos2f(x, y);
+
+	for (GLint c = 0; c<j; c++)
+	{
+		//printf("HELLO");
+		glutStrokeCharacter(GLUT_STROKE_ROMAN, string[c]);
+	}
+}
+
+char scoreString[12];
+void drawingScoreText(GLfloat scale)
+{
+	glPushMatrix();
+
+	//draw the text offset from the box
+	glTranslatef(500.0, 130.0, 0.0);
+	glColor3f(0.0, 1.0, 0.0);
+	sprintf_s(scoreString, "Score:%3.0f", Score);
+
+	//flip
+	glRotatef(180.0, 1.0, 0.0, 0.0);
+	glScalef(scale, scale, scale);
+
+
+	drawText(scoreString, 500, 100, 0, 1, 0);
+	glPopMatrix();
+}
+
+char numberOfGoesString[22];
+void drawingNumberOfShotsLeft(GLfloat scale)
+{
+	glPushMatrix();
+
+	//draw the text offset from the box
+	glTranslatef(300.0, 70.0, 0.0);
+	glColor3f(0.0, 1.0, 0.0);
+	sprintf_s(numberOfGoesString, "Number of goes:%3.0d", numberOfGoes);
+
+	//flip
+	glRotatef(180.0, 1.0, 0.0, 0.0);
+	glScalef(scale, scale, scale);
+
+
+	drawText(numberOfGoesString, 500, 100, 0, 1, 0);
+	glPopMatrix();
+}
+
+void setOrthographicProjection() {
+	glMatrixMode(GL_PROJECTION);
+	glPushMatrix();
+	glLoadIdentity();
+	gluOrtho2D(0, Wwidth, 0, Wheight);
+	glScalef(1, -1, 1);
+	glTranslatef(0, -Wheight, 0);
+	glMatrixMode(GL_MODELVIEW);
+}
+
+void ChangeSize(int w, int h)
+{
+	GLfloat fAspect;
+	Wwidth = w;
+	Wheight = h;
+
+	// Prevent a divide by zero
+	if (h == 0)
+		h = 1;
+
+	// Set Viewport to window dimensions
+	glViewport(0, 0, w, h);
+
+	// Calculate aspect ratio of the window
+	fAspect = (GLfloat)w / (GLfloat)h;
+
+	// Set the perspective coordinate system
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	gluPerspective(60.0f, fAspect, 1.0, 2000.0);
+	// Modelview matrix reset
+	glMatrixMode(GL_MODELVIEW);
+}
+
+// Called to draw scene
+void RenderScene(void)
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glLoadIdentity();
+	// Save the matrix state and do the rotations
+	glMatrixMode(GL_MODELVIEW);
+	glTranslatef(0.0, 0.0, -200.0f);
+
+	UI();
+	
+	// view the scene
+	if (cameraFollow == false) {
+		gluLookAt(cameraX, cameraY, cameraZ,//eye
+			0.00, 0.00, 0.00,//centre
+			0.00, 1.00, 0.00);//up
+	}
+	else if (cameraFollow == true) {
+		gluLookAt(xStart + 30, yStart + 30, zStart + 30,//eye
+			0.00, 0.00, 0.00,//centre
+			0.00, 1.00, 0.00);//up
+	}
+	//glPushMatrix();
+	
+	buildFootball();
+	buildRedDot();
+	buildScene();
+	buildTargetsAndBoundingSpheres();
+	buildDecerations();	
+	glutSwapBuffers();
+
+}
+
+#pragma region BUILDING FUNCTIONS
+
+/* This region contains all of the building functions*/
+
+void buildScene() {
+
+	//Builds the Grass
+	glPushMatrix();
+	glTranslatef(0.0, 0.0, -400.0);
+	glRotatef(-90.0, 1.0, 0.0, 0.0);
+	Grass *grass = new Grass(GRASS);
+	glPopMatrix();
+
+	//Builds the Walls
+	glPushMatrix();
+	glTranslatef(0.0, -700.0, -400.0);
+	Wall *wallOne = new Wall(WALL);
+	walls.push_back(*wallOne);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(500, -700.0, -200);
+	glRotatef(-90.0, 0.0, 1.0, 0.0);
+	Wall *wallTwo = new Wall(WALL);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-500, -700.0, -200);
+	glRotatef(90.0, 0.0, 1.0, 0.0);
+	Wall *wallThree = new Wall(WALL);
+	glPopMatrix();
+
+}
+void buildTargetsAndBoundingSpheres() {
+
+	//This function builds the targets and bounding spheres
+
+#pragma region BLUE TARGETS
+	glPushMatrix();
+	glTranslatef(0.0, 150, -399.0);
+	Targets *blueTarget1 = new Targets(TARGET_BLUE, 40, 40, target1);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(120, 200, -399.0);
+	Targets *blueTarget2 = new Targets(TARGET_BLUE, 40, 40, target2);
+	glPopMatrix();
+#pragma endregion
+
+#pragma region RED TARGETS
+	glPushMatrix();
+	glTranslatef(120, 100, -399.0);
+	Targets *redTarget1 = new Targets(TARGET_RED, 30, 30, target3);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-280, 140, -399.0);
+	Targets *redTarget2 = new Targets(TARGET_RED, 30, 30, target4);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-260, 220, -399.0);
+	Targets *redTarget3 = new Targets(TARGET_RED, 30, 30, target8);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(230, 200, -399.0);
+	Targets *redTarget4 = new Targets(TARGET_RED, 30, 30, target9);
+	glPopMatrix();
+
+
+#pragma endregion
+
+#pragma region GREEN TARGETS
+	glPushMatrix();
+	glTranslatef(250, 100, -399.0);
+	Targets *greenTarget1 = new Targets(TARGET_GREEN, 50, 50, target5);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-180, 100, -399.0);
+	Targets *greenTarget2 = new Targets(TARGET_GREEN, 50, 50, target6);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-380, 90, -399.0);
+	Targets *greenTarget3 = new Targets(TARGET_GREEN, 50, 50, target7);
+	glPopMatrix();
+#pragma endregion
+
+	targets.push_back(*blueTarget1);
+	targets.push_back(*blueTarget2);
+	targets.push_back(*redTarget1);
+	targets.push_back(*redTarget2);
+	targets.push_back(*redTarget3);
+	targets.push_back(*redTarget4);
+	targets.push_back(*greenTarget1);
+	targets.push_back(*greenTarget2);
+	targets.push_back(*greenTarget3);
+	
+
+#pragma region BOUNDING SPHERES
+	//BLUE - 20 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere1 = new BoundingSphere(0, 150, -399, 30);
+	glPopMatrix();
+	//BLUE - 20 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere2 = new BoundingSphere(120, 200, -399, 30);
+	glPopMatrix();
+	//RED - 30 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere3 = new BoundingSphere(120, 100, -399, 20);
+	glPopMatrix();
+	//RED - 30 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere8 = new BoundingSphere(230, 200, -399.0, 20);
+	glPopMatrix();
+	//RED - 30 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere9 = new BoundingSphere(-260, 220, -399.0, 20);
+	glPopMatrix();
+	//RED - 30 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere4 = new BoundingSphere(-280, 140, -399, 20);
+	glPopMatrix();
+	//GREEN - 10 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere5 = new BoundingSphere(250, 100, -399, 40);
+	glPopMatrix();
+	//GREEN - 10 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere6 = new BoundingSphere(-180, 100, -399, 40);
+	glPopMatrix();
+	//GREEN - 10 Points
+	glPushMatrix();
+	BoundingSphere *boundingSphere7 = new BoundingSphere(-380, 90, -399, 40);
+	glPopMatrix();
+
+	//Pushes the boundary spheres into the bounding spheres vector array
+	boundingSpheres.push_back(*boundingSphere1);
+	boundingSpheres.push_back(*boundingSphere2);
+	boundingSpheres.push_back(*boundingSphere3);
+	boundingSpheres.push_back(*boundingSphere4);
+	boundingSpheres.push_back(*boundingSphere5);
+	boundingSpheres.push_back(*boundingSphere6);
+	boundingSpheres.push_back(*boundingSphere7);
+	boundingSpheres.push_back(*boundingSphere8);
+	boundingSpheres.push_back(*boundingSphere9);
+#pragma endregion
+
+}
+void buildDecerations() {
+
+#pragma region TREES
+	glPushMatrix();
+	glTranslatef(570, 0, -200);
+	glRotatef(-90.0, 0.0, 1.0, 0.0);
+	Tree *tree1 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(570, 0, -100);
+	glRotatef(-90.0, 0.0, 1.0, 0.0);
+	Tree *tree2 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(570, 0, 0);
+	glRotatef(-90.0, 0.0, 1.0, 0.0);
+	Tree *tree3 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-570, 0, -200);
+	glRotatef(90.0, 0.0, 1.0, 0.0);
+	Tree *tree4 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-570, 0, -100);
+	glRotatef(90.0, 0.0, 1.0, 0.0);
+	Tree *tree5 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-570, 0, 0);
+	glRotatef(90.0, 0.0, 1.0, 0.0);
+	Tree *tree6 = new Tree(TREE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glLoadIdentity();
+	glTranslatef(0.0f, 20.0f, -290.0f);
+	glScalef(990, 990, 990);
+	glRotatef(backgroundRotation, 0, 1, 0);
+	Background *background = new Background(BACKGROUND);
+	glPopMatrix();
+
+#pragma endregion
+
+#pragma region FLOWERS
+#pragma region RIGHT FLOWERS
+
+	glPushMatrix();
+	glTranslatef(400, 0, -430);
+	Flowers *orangeFlower1 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(350, 0, -430);
+	Flowers *yellowFlower1 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(300, 0, -430);
+	Flowers *orangeFlower2 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(250, 0, -430);
+	Flowers *yellowFlower2 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(200, 0, -430);
+	Flowers *orangeFlower3 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(150, 0, -430);
+	Flowers *yellowFlower3 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(100, 0, -430);
+	Flowers *orangeFlower4 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(50, 0, -430);
+	Flowers *yellowFlower4 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+#pragma endregion
+
+#pragma region CENTRE FLOWER
+	glPushMatrix();
+	glTranslatef(0, 0, -430);
+	Flowers *orangeFlower5 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+#pragma endregion
+
+#pragma region LEFT FLOWERS
+	glPushMatrix();
+	glTranslatef(-400, 0, -430);
+	Flowers *yellowFlower5 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-350, 0, -430);
+	Flowers *orangeFlower6 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-300, 0, -430);
+	Flowers *yellowFlower6 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-250, 0, -430);
+	Flowers *orangeFlower7 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-200, 0, -430);
+	Flowers *yellowFlower7 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-150, 0, -430);
+	Flowers *orangeFlower8 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-100, 0, -430);
+	Flowers *yellowFlower8 = new Flowers(FLOWER_YELLOW);
+	glPopMatrix();
+
+	glPushMatrix();
+	glTranslatef(-50, 0, -430);
+	Flowers *orangeFlower9 = new Flowers(FLOWER_ORANGE);
+	glPopMatrix();
+#pragma endregion
+#pragma endregion
+
+}
+void buildRedDot() {
+#pragma region Red Dot
+	glPushMatrix();
+	glTranslatef(xBall, yBall, zBall);
+	drawRedDot(RED_DOT);
+	glPopMatrix();
+#pragma endregion
+}
+void buildFootball() {
+#pragma region FOOTBALL
+	glPushMatrix();
+	//glRotatef(ballRotation, 0, 1, 0);
+	football = new Football(xStart, yStart, zStart, 20.0f);
+	glPopMatrix();
+#pragma endregion
+}
+void background() {
+
+}
+void UI() {
+	glPushMatrix();
+	glLoadIdentity();
+	setOrthographicProjection();
+	glBegin(GL_LINES);
+	glColor3f(0.0, 0.0, 0.0);
+	glVertex2f(20.0, 40.0);
+	glVertex2f(100.0, 40.0);
+	glEnd();
+	drawingScoreText(0.5f);
+	glPopMatrix();
+	resetPerspectiveProjection();
+
+	glPushMatrix();
+	glLoadIdentity();
+	setOrthographicProjection();
+	glBegin(GL_LINES);
+	glColor3f(0.0, 0.0, 0.0);
+	glVertex2f(20.0, 40.0);
+	glVertex2f(100.0, 40.0);
+	glEnd();
+	drawingNumberOfShotsLeft(0.5f);
+	glPopMatrix();
+	resetPerspectiveProjection();
+
+
+	//XBAR SLIDER
+	glPushMatrix();
+	glTranslatef(xBarSlider, 88.0f, 0.0f);
+	BarXSlider *xBarSlider = new BarXSlider(XBARSLIDER);
+	glPopMatrix();
+
+	//XBAR 
+	glPushMatrix();
+	glTranslatef(-165.0f, 90.0f, 0.0f);
+	BarX *xBar = new BarX(XBAR);
+	glPopMatrix();
+
+	//YBARSLIDER
+	glPushMatrix();
+	glTranslatef(165, yBarSlider, 0.0);
+	BarYSlider *yBarSlider = new BarYSlider(YBARSLIDER);
+	glPopMatrix();
+
+	//YBAR
+	glPushMatrix();
+	glTranslatef(165, -90, 0.0f);
+	BarY *yBar = new BarY(YBAR);
+	glPopMatrix();
+}
+#pragma endregion
+
+void resetBall() {
+	//Resets the ball position
+	xStart = 0.0f;
+	yStart = 20.0f;
+	zStart = 280.0f;
+	moveBall = false;
+	cameraFollow = false;
+}
+
+//Resets the Red Point Position and UI Slider Positions
+void resetRedPosition() {
+	xBall = 0.0f;
+	yBall = 250.0f;
+	zBall = -398.0f;
+
+	xBarSlider = -165.0f;
+	yBarSlider = -71.15;
+}
+
+//When the r button is pressed, the game is reset
+void resetGame() {
+	resetBall();
+	resetRedPosition();
+	target1 = false;
+	target2 = false;
+	target3 = false;
+	target4 = false;
+	target5 = false;
+	target6 = false;
+	target7 = false;
+	target8 = false;
+	target9 = false;
+	cameraFollow = false;
+	Score = 0;
+	numberOfGoes = 10;
+}
+
+//Special user controls
+void userSpecialControls(int key, int x, int y) {
+
+	//Controls the y of the ball
+	if (key == GLUT_KEY_UP) {
+		yBall = yBall + 5;
+		ySpeed += 0.1f;
+		yBarSlider = yBarSlider + 0.35;
+	}
+	else if (key == GLUT_KEY_DOWN) {
+		yBall = yBall - 5;
+		ySpeed -= 0.1f;
+		yBarSlider = yBarSlider - 0.35;
+	}
+
+	//Controls the x of the ball
+	if (key == GLUT_KEY_RIGHT) {
+		xBall = xBall + 5;
+		xBarSlider = xBarSlider + 0.2;
+	}
+	else if (key == GLUT_KEY_LEFT) {
+		xBall = xBall - 5;
+		xBarSlider = xBarSlider - 0.2;
+	}
+
+	if (yBall < 10) {
+		yBall = 10;
+	}
+	else if (yBall > 535) {
+		yBall = 535;
+	}
+
+	if (xBall < -490) {
+		xBall = -490;
+	}
+	else if (xBall > 490) {
+		xBall = 490;
+	}
+
+	if (xBarSlider > -145.4f) {
+		xBarSlider = -145.4f;
+	}
+	else if (xBarSlider < -184.6) {
+		xBarSlider = -184.6;
+	}
+
+	if (yBarSlider > -50.0501f) {
+		yBarSlider = -50.0501f;
+	}
+	else if (yBarSlider < -89.5) {
+		yBarSlider = -89.5;
+	}
+
+	glutPostRedisplay();
+}
+//User controls
+void userControls(unsigned char key, int x, int y) {
+	if (moveBall != true && numberOfGoes != 0) {
+		if (key == 32) {
+			numberOfGoes--;
+			moveBall = true;
+		}
+	}
+
+	if (key == 259) {
+		exit(0);
+	}
+
+
+	if (key == 'r') {
+		resetGame();
+	}
+	else if (key == 'f') {
+		cameraFollow = !cameraFollow;
+	}
+
+	if (numberOfGoes == 0) {
+		moveBall = false;
+	}
+	
+	cout << numberOfGoes << endl;
+}
+
+// This function does any needed initialization on the rendering
+// context.
+void SetupRC()
+{
+    //textures
+
+    GLuint texture;
+    // allocate a texture name
+    glGenTextures( 1, &texture );
+    glPixelStorei(GL_UNPACK_ALIGNMENT,1);
+	// photoshop is a good converter to targa (TGA)
+	//the gltLoadTGA method is found in gltools.cpp and is orignally from the OpenGL SuperBible book
+	//there are quite a few ways of loading images
+    // Load textures in a for loop
+    glGenTextures(TEXTURE_COUNT, textures);
+    //this puts the texture into OpenGL texture memory
+ //   glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE); - not defined so probably need to update GLEW - not needed here so ignore
+    for(int iLoop = 0; iLoop < TEXTURE_COUNT; iLoop++)
+    {
+        // Bind to next texture object
+        glBindTexture(GL_TEXTURE_2D, textures[iLoop]);
+        
+        // Load texture data, set filter and wrap modes
+        //note that gltLoadTGA is in the glm.cpp file and not a built-in openGL function
+        pBytes0 = gltLoadTGA(textureFiles[iLoop],&iWidth, &iHeight,
+                             &iComponents, &eFormat);
+        
+        glTexImage2D(GL_TEXTURE_2D, 0, iComponents, iWidth, iHeight, 0, eFormat, GL_UNSIGNED_BYTE, pBytes0);
+        
+            //set up texture parameters
+        
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+        //try these too
+       // glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD);
+        // glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        free(pBytes0);
+    }
+    
+	//enable textures
+    glEnable(GL_TEXTURE_2D);
+  
+	glEnable(GL_DEPTH_TEST);	// Hidden surface removal    
+    glFrontFace(GL_CCW);// Counter clock-wise polygons face out
+ //	glEnable(GL_CULL_FACE);		// Do not calculate inside
+
+//    glCullFace(GL_FRONT_AND_BACK);
+    
+// Enable lighting
+	glEnable(GL_LIGHTING);
+	glEnable(GL_POINT_SMOOTH);
+	// Setup and enable light 0
+	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, whiteLightBright);
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, whiteLightBright);
+	glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+	glLightfv(GL_LIGHT0, GL_SPECULAR, mKs);
+	glLightf(GL_LIGHT0, GL_SPOT_CUTOFF, 60.0f);
+	glEnable(GL_LIGHT0);
+
+	glLightfv(GL_LIGHT1, GL_DIFFUSE, whiteLightBright);
+	glLightfv(GL_LIGHT1, GL_POSITION, lightPos2);
+	glLightfv(GL_LIGHT1, GL_SPECULAR, mKs);
+	glLightf(GL_LIGHT1, GL_SPOT_CUTOFF, 60.0f);
+	//glEnable(GL_LIGHT1);
+
+	glLightfv(GL_LIGHT2, GL_DIFFUSE, whiteLightBright);
+	glLightfv(GL_LIGHT2, GL_POSITION, lightPos3);
+	glLightfv(GL_LIGHT2, GL_SPECULAR, mKs);
+	glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 60.0f);
+	//glEnable(GL_LIGHT2);
+
+	// Enable colour tracking
+	glEnable(GL_COLOR_MATERIAL);
+
+	// Set Material properties to follow glColor values
+	glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
+
+	// All materials hereafter have full specular reflectivity
+	// with a high shine
+	glMaterialfv(GL_FRONT, GL_SPECULAR, mKs);
+	glMateriali(GL_FRONT, GL_SHININESS, 128);
+
+	// Black blue background clear colour
+	glClearColor(0.0f, 0.0f, 0.03f, 1.0f);
+}
+
+void TimerFunc(int value)
+{
+	if (moveBall != false) {
+
+		distanceBetweenTargets();
+
+		if (yStart != yBall) {
+			yStart++;
+		}
+
+		if (zStart > zBall) {
+			zStart = zStart - 3;
+		}
+
+		if (xStart != xBall) {
+			if (xStart > xBall) {
+				xStart = xStart - xSpeed;
+			}
+			else if (xStart < xBall) {
+				xStart = xStart + xSpeed;
+			}
+		}
+		
+		if (yStart == yBall && xStart == xBall & zStart == zBall) {
+			moveBall = false;			
+		}
+		
+	}
+
+	glutTimerFunc(25, TimerFunc, 1);
+	glutPostRedisplay();
+
+
+	backgroundRotation = backgroundRotation + 0.2;
+	if (backgroundRotation > 360.0f)
+	{
+		backgroundRotation = 0.0f;
+	}
+}
+
+void init()
+{
+	glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+}
+
+void distanceBetweenTargets() {
+
+	GLfloat distance = football->getRadius() + boundingSpheres[0].getRadius();
+
+	GLfloat x = football->getX() - boundingSpheres[0].getX();
+	GLfloat y = football->getY() - boundingSpheres[0].getY();
+	GLfloat z = football->getZ() - boundingSpheres[0].getZ();
+
+	if (football->getX() <= (boundingSpheres[0].getX() + distance) && football->getX() >= (boundingSpheres[0].getX() - distance)
+		&& football->getY() <= (boundingSpheres[0].getY() + distance) && football->getY() >= (boundingSpheres[0].getY() - distance)
+			&& football->getZ() <= (boundingSpheres[0].getZ() + distance) && football->getZ() >= (boundingSpheres[0].getZ() - distance)) {
+
+		if (target1 == false) {
+			Score = Score + 20;
+			target1 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[1].getX() + distance) && football->getX() >= (boundingSpheres[1].getX() - distance)
+		&& football->getY() <= (boundingSpheres[1].getY() + distance) && football->getY() >= (boundingSpheres[1].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[1].getZ() + distance) && football->getZ() >= (boundingSpheres[1].getZ() - distance)) {
+
+		if (target2 == false) {
+			Score = Score + 20;
+			target2 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[2].getX() + distance) && football->getX() >= (boundingSpheres[2].getX() - distance)
+		&& football->getY() <= (boundingSpheres[2].getY() + distance) && football->getY() >= (boundingSpheres[2].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[2].getZ() + distance) && football->getZ() >= (boundingSpheres[2].getZ() - distance)) {
+
+		if (target3 == false) {
+			Score = Score + 30;
+			target3 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[3].getX() + distance) && football->getX() >= (boundingSpheres[3].getX() - distance)
+		&& football->getY() <= (boundingSpheres[3].getY() + distance) && football->getY() >= (boundingSpheres[3].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[3].getZ() + distance) && football->getZ() >= (boundingSpheres[3].getZ() - distance)) {
+
+		if (target4 == false) {
+			Score = Score + 30;
+			target4 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[4].getX() + distance) && football->getX() >= (boundingSpheres[4].getX() - distance)
+		&& football->getY() <= (boundingSpheres[4].getY() + distance) && football->getY() >= (boundingSpheres[4].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[4].getZ() + distance) && football->getZ() >= (boundingSpheres[4].getZ() - distance)) {
+
+		if (target5 == false) {
+			Score = Score + 30;
+			target5 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[5].getX() + distance) && football->getX() >= (boundingSpheres[5].getX() - distance)
+		&& football->getY() <= (boundingSpheres[5].getY() + distance) && football->getY() >= (boundingSpheres[5].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[5].getZ() + distance) && football->getZ() >= (boundingSpheres[5].getZ() - distance)) {
+
+		if (target6 == false) {
+			Score = Score + 10;
+			target6 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[6].getX() + distance) && football->getX() >= (boundingSpheres[6].getX() - distance)
+		&& football->getY() <= (boundingSpheres[6].getY() + distance) && football->getY() >= (boundingSpheres[6].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[6].getZ() + distance) && football->getZ() >= (boundingSpheres[6].getZ() - distance)) {
+		
+		if (target7 == false) {
+			Score = Score + 10;
+			target7 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[7].getX() + distance) && football->getX() >= (boundingSpheres[7].getX() - distance)
+		&& football->getY() <= (boundingSpheres[7].getY() + distance) && football->getY() >= (boundingSpheres[7].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[7].getZ() + distance) && football->getZ() >= (boundingSpheres[7].getZ() - distance)) {
+		
+		if (target9 == false) {
+			Score = Score + 30;
+			target9 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[8].getX() + distance) && football->getX() >= (boundingSpheres[8].getX() - distance)
+		&& football->getY() <= (boundingSpheres[8].getY() + distance) && football->getY() >= (boundingSpheres[8].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[8].getZ() + distance) && football->getZ() >= (boundingSpheres[8].getZ() - distance)) {
+
+		if (target8 == false) {
+			Score = Score + 30;
+			target8 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getX() <= (boundingSpheres[9].getX() + distance) && football->getX() >= (boundingSpheres[9].getX() - distance)
+		&& football->getY() <= (boundingSpheres[9].getY() + distance) && football->getY() >= (boundingSpheres[9].getY() - distance)
+		&& football->getZ() <= (boundingSpheres[9].getZ() + distance) && football->getZ() >= (boundingSpheres[9].getZ() - distance)) {
+
+		if (target9 == false) {
+			Score = Score + 30;
+			target9 = true;
+		}
+
+		resetBall();
+	}
+	else if (football->getZ() <= -398.0f + 20) {
+		resetBall();
+	}
+}
+
+int main(int argc, char* argv[])
+{
+	glutInit(&argc, argv);
+	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
+    glutInitWindowSize(1280, 720);
+	glutCreateWindow("3D Football");
+	init();
+	
+	glutReshapeFunc(ChangeSize);
+	glutDisplayFunc(RenderScene);
+	glutSpecialFunc(userSpecialControls);
+	glutKeyboardFunc(userControls);
+    glutTimerFunc(25, TimerFunc, 1);
+	SetupRC();
+	
+	glutMainLoop();
+	return 0;
+}
+
+
+
+
+
+
